@@ -7,7 +7,6 @@ from qiskit.primitives.containers.primitive_result import PrimitiveResult
 from collections import Counter
 from Crypto.Hash import RIPEMD160, SHA256  # Import from pycryptodome
 from ecdsa import SigningKey, SECP256k1
-from qiskit.quantum_info import Statevector
 from qiskit_ibm_runtime import Options
 from qiskit.primitives import Sampler
 from bitarray import bitarray
