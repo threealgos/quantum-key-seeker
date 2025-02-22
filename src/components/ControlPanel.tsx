@@ -7,6 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ControlPanel: React.FC = () => {
   const [isConfiguring, setIsConfiguring] = useState(false);
@@ -14,7 +21,6 @@ const ControlPanel: React.FC = () => {
 
   const handleInitialize = () => {
     setIsConfiguring(true);
-    // Show a toast explaining that backend setup is needed
     toast({
       title: "Backend Configuration Required",
       description: "To run quantum computations, you need to set up a backend server with Qiskit or configure IBM Quantum API credentials.",
@@ -38,6 +44,8 @@ const ControlPanel: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            {/* IBM Quantum API Key */}
             <div className="space-y-2">
               <Label htmlFor="ibm-api-key">IBM Quantum API Key</Label>
               <Input 
@@ -47,6 +55,26 @@ const ControlPanel: React.FC = () => {
                 className="font-mono"
               />
             </div>
+
+            {/* Backend Selection */}
+            <div className="space-y-2">
+              <Label>Quantum Backend</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select backend" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ibm_sherbrooke">IBM Sherbrooke</SelectItem>
+                  <SelectItem value="ibm_brisbane">IBM Brisbane</SelectItem>
+                  <SelectItem value="ibm_kyoto">IBM Kyoto</SelectItem>
+                  <SelectItem value="ibm_quebec">IBM Quebec</SelectItem>
+                  <SelectItem value="simulator_stabilizer">Stabilizer Simulator</SelectItem>
+                  <SelectItem value="simulator_statevector">Statevector Simulator</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Target Bitcoin Address */}
             <div className="space-y-2">
               <Label htmlFor="target-address">Target Address</Label>
               <Input 
@@ -55,6 +83,22 @@ const ControlPanel: React.FC = () => {
                 className="font-mono"
               />
             </div>
+
+            {/* Number of Shots */}
+            <div className="space-y-2">
+              <Label htmlFor="shots">Number of Shots</Label>
+              <Input 
+                id="shots"
+                type="number"
+                defaultValue="8192"
+                min="1"
+                max="100000"
+                className="font-mono"
+              />
+              <p className="text-xs text-gray-500">Number of times to run the circuit (1-100,000)</p>
+            </div>
+
+            {/* Number of Qubits */}
             <div className="space-y-2">
               <Label>Number of Qubits</Label>
               <Slider 
@@ -69,6 +113,25 @@ const ControlPanel: React.FC = () => {
                 <span>20</span>
               </div>
             </div>
+
+            {/* Optimization Level */}
+            <div className="space-y-2">
+              <Label>Optimization Level</Label>
+              <Select defaultValue="3">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select optimization level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Level 0 (No optimization)</SelectItem>
+                  <SelectItem value="1">Level 1 (Light optimization)</SelectItem>
+                  <SelectItem value="2">Level 2 (Medium optimization)</SelectItem>
+                  <SelectItem value="3">Level 3 (Heavy optimization)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">Circuit optimization level (higher = better but slower)</p>
+            </div>
+
+            {/* Initialize Button */}
             <div className="pt-4">
               <Button 
                 className="w-full" 
