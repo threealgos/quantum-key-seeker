@@ -80,6 +80,7 @@ const ControlPanel: React.FC = () => {
               <Input 
                 id="target-address"
                 placeholder="Enter Bitcoin address"
+                defaultValue="1HduPEXZRdG26SUT5Yk83mLkPyjnZuJ7Bm"
                 className="font-mono"
               />
             </div>
@@ -96,6 +97,29 @@ const ControlPanel: React.FC = () => {
                 className="font-mono"
               />
               <p className="text-xs text-gray-500">Number of times to run the circuit (1-100,000)</p>
+            </div>
+
+            {/* Key Range */}
+            <div className="space-y-2">
+              <Label>Key Range</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="min-range" className="text-xs">Min Range (hex)</Label>
+                  <Input 
+                    id="min-range"
+                    defaultValue="0x10000"
+                    className="font-mono"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="max-range" className="text-xs">Max Range (hex)</Label>
+                  <Input 
+                    id="max-range"
+                    defaultValue="0x1FFFF"
+                    className="font-mono"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Number of Qubits */}
