@@ -1,3 +1,4 @@
+#i realy hope you get me some Donation for the Quantum project_ 1NEJcwfcEm7Aax8oJNjRUnY3hEavCjNrai /////
 from qiskit import QuantumCircuit, transpile, assemble
 from qiskit.circuit.controlflow.break_loop import BreakLoopPlaceholder
 from qiskit.circuit.library import ZGate, MCXGate
@@ -15,18 +16,22 @@ from qiskit.quantum_info import PauliList, SparsePauliOp, Statevector, Operator
 from qiskit.circuit import Parameter
 #from qiskit_aer.primitives import SamplerV2  # for simulator
 #from qiskit_ibm_runtime import SamplerV2 as real_sampler  # for hardware
+#from qiskit_algorithms.optimizers import AmplificationProblem, CustomCircuitOracle
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_aer import AerSimulator, Aer
 from qiskit_ibm_runtime import Estimator
-from qiskit.circuit.library import RYGate
+from qiskit.circuit.library import RYGate, GroverOperator
 import random
 import time
 import hashlib
 import base58
 import numpy as np
 import math
+from math import ceil, log2
+#from qiskit.providers.ibmq import IBMQ
 from qiskit.visualization import plot_histogram, plot_distribution
 import matplotlib.pyplot as plt
-from qiskit import QuantumRegister, ClassicalRegister
+from qiskit import QuantumRegister, ClassicalRegister, AncillaRegister
 from qiskit.circuit.library import QFT, Arithmetic
 from qiskit_algorithms import Grover, AmplificationProblem
 from qiskit_algorithms.amplitude_amplifiers.grover import GroverResult
@@ -36,7 +41,7 @@ from qiskit.utils import QuantumInstance
 # Load IBMQ account using QiskitRuntimeService
 QiskitRuntimeService.save_account(
     channel='ibm_quantum',
-    token='29e1878ddfb11fd8422a7c7c2f07521420b73988a7b1bd610b81758122de534d90abdb90466b747d81c43aea6c81147d89de8c551e24d4a30f584419e96e3659',  # Replace with your actual token
+    token='dde8ed432a4c90c9c6f294e1b8b37338aed79f7545c4870397c65afce7d38b8d0501de702d0799207710adb651b0816f08d221359c89ec62deb3c1d369f1efe7',  # Replace with your actual token
     instance='ibm-q/open/main',
     overwrite=True,
     set_as_default=True
@@ -331,7 +336,7 @@ def main():
         # Plot the histogram of results
         print("Plotting result histogram...")
         plot_histogram(counts)
-        plot_results_histogram(counts):
+        plot_results_histogram(counts)
         plot_result_histogram(counts)    
         plot_histogram(counts, title="Measurement Results Distribution")
         plt.show()
@@ -380,9 +385,9 @@ def main():
             for bitstring, count in counts.items():
                 file.write(f"{bitstring}: {count}\n")
         print("Results saved to boom.txt")
-            break  # Exit the loop if a valid key is found
-        else:
-            print("\nFailed to find private key. Resubmitting job...")
+        break  # Exit the loop if a valid key is found
+    else:
+        print("\nFailed to find private key. Resubmitting job...")
 
 if __name__ == "__main__":
     main()
