@@ -1,4 +1,6 @@
 #i realy hope you get me some Donation for the Quantum project_ 1NEJcwfcEm7Aax8oJNjRUnY3hEavCjNrai /////
+#DeprecationWarning: The function ``qiskit.compiler.assembler.assemble()`` is deprecated as of qiskit 1.2. It will be removed in the 2.0 release. The `Qobj` class and related functionality are part of the deprecated `BackendV1` workflow,  and no longer necessary for `BackendV2`. If a user workflow requires `Qobj` it likely relies on deprecated functionality and should be updated to use `BackendV2`.
+
 from qiskit import QuantumCircuit, transpile, assemble
 from qiskit.circuit.controlflow.break_loop import BreakLoopPlaceholder
 from qiskit.circuit.library import ZGate, MCXGate
@@ -32,11 +34,9 @@ from math import ceil, log2
 from qiskit.visualization import plot_histogram, plot_distribution
 import matplotlib.pyplot as plt
 from qiskit import QuantumRegister, ClassicalRegister, AncillaRegister
-from qiskit.circuit.library import QFT, Arithmetic
+from qiskit.circuit.library import QFT, arithmetic
 from qiskit_algorithms import Grover, AmplificationProblem
 from qiskit_algorithms.amplitude_amplifiers.grover import GroverResult
-from qiskit.algorithms import Shor
-from qiskit.utils import QuantumInstance
 
 # Load IBMQ account using QiskitRuntimeService
 QiskitRuntimeService.save_account(
@@ -121,8 +121,12 @@ def quantum_circuit(num_qubits, Gx, Gy, Px, p):
         # Controlled point doubling: Q = [2^i]G
         Qx, Qy = scalar_multiplication(2**i, Gx, Gy, p)
 
+        # Create an auxiliary qubit to prevent duplicate qubit error
+        q_x_aux = QuantumRegister(1, f'aux_{i}')
+        qc.add_register(q_x_aux)
+
         # Controlled point addition: Q = Q + [2^i]G if the i-th bit of k is 1
-        qc.cswap(anc, q_x[i], q_x[i])  # Controlled swap for addition
+        qc.cswap(anc, q_x[i], q_x_aux[0])  # Controlled swap for addition
 
         # Compare Qx to Px (the target public key)
         qc.cx(q_x[i], anc)  # Controlled NOT for equality check
@@ -136,8 +140,9 @@ def quantum_circuit(num_qubits, Gx, Gy, Px, p):
 
     return qc
 
+# Function to convert private key to compressed Bitcoin address
 def private_key_to_compressed_address(private_key_hex):
-    """Convertit une clé privée en une adresse Bitcoin compressée."""
+    print(f"Converting private key {private_key_hex} to Bitcoin address...")
     private_key_bytes = bytes.fromhex(private_key_hex)
     sk = SigningKey.from_string(private_key_bytes, curve=SECP256k1)
     vk = sk.verifying_key
@@ -148,7 +153,7 @@ def private_key_to_compressed_address(private_key_hex):
     compressed_public_key = prefix + x_coord
 
     sha256_pk = hashlib.sha256(compressed_public_key).digest()
-    ripemd160 = RIPEMD160.new()
+    ripemd160 = RIPEMD160.new()  # Using Cryptodome's RIPEMD160
     ripemd160.update(sha256_pk)
     hashed_public_key = ripemd160.digest()
 
@@ -156,35 +161,28 @@ def private_key_to_compressed_address(private_key_hex):
     sha256_first = hashlib.sha256(network_byte).digest()
     sha256_second = hashlib.sha256(sha256_first).digest()
     checksum = sha256_second[:4]
-    binary_address = network_byte + checksum
-    return base58.b58encode(binary_address).decode('utf-8')
 
-# Fonction pour convertir une clé publique en hachage de clé publique (SHA256 -> RIPEMD160)
+    binary_address = network_byte + checksum
+    bitcoin_address = base58.b58encode(binary_address).decode('utf-8')
+    print(f"Generated Bitcoin address: {bitcoin_address}")
+    return bitcoin_address     
+
+# Function to convert public key to Public-Key-Hash (SHA256 -> RIPEMD160)
 def public_key_to_public_key_hash(public_key_hex):    
     try:
-        # Étape 1 : Effectuer SHA-256 sur la clé publique
+        # Step 1: Perform SHA-256 on the public key
         sha256_hash = SHA256.new(bytes.fromhex(public_key_hex)).digest()
         
-        # Étape 2 : Effectuer RIPEMD-160 sur le résultat de SHA-256 en utilisant Cryptodome
-        ripemd160 = RIPEMD160.new()  # Utilisation de RIPEMD160 de Cryptodome
+        # Step 2: Perform RIPEMD-160 on the result of SHA-256 using Cryptodome
+        ripemd160 = RIPEMD160.new()  # Using Cryptodome's RIPEMD160
         ripemd160.update(sha256_hash)
         ripemd160_hash = ripemd160.digest()
         
-        # Retourner le hachage de la clé publique en format hexadécimal
+        # Return the Public-Key-Hash in hexadecimal format
         return ripemd160_hash.hex()
     
     except ValueError as e:
-        raise ValueError(f"Entrée invalide pour la clé publique hex : {e}")
-
-# Fonction pour convertir un binaire en hexadécimal
-def binary_to_hex(bin_key):
-    bin_key = bin_key.zfill(128)  # Assurer un remplissage de 128 bits
-    return hex(int(bin_key, 2))[2:].zfill(64)
-
-# Convertir une chaîne binaire en hexadécimal
-def binary_to_hex(bin_str):
-    hex_str = hex(int(bin_str, 2))[2:].upper()
-    return hex_str.zfill(64)  #  # Ensure the hex string is 64 characters (32 bytes)
+        raise ValueError(f"Invalid input for public key hex: {e}")
 
 # Get the top 10 most frequent results
 def get_top_10_frequent(counts):
@@ -193,11 +191,16 @@ def get_top_10_frequent(counts):
     print(f"Top 10 most frequent counts: {top_10_counts}")
     return [int(bitstring, 2) for bitstring, _ in top_10_counts]
 
-# Retrieve job result and verify valid private keys
-def retrieve_job_result(job_id, target_address, num_qubits):
+# Function to convert binary to hex
+def binary_to_hex(bin_key):
+    bin_key = bin_key.zfill(128)  # Ensure 128-bit padding
+    return hex(int(bin_key, 2))[2:].zfill(64)
+
+def retrieve_job_result(job_id, target_address, quantum_registers):
+    """Retrieve job results and check for valid private keys."""
     print(f"Retrieving job result for job ID: {job_id}...")
     service = QiskitRuntimeService()
-
+    quantum_registers = 20  # Use 20 qubits for the search
     try:
         # Retrieve job result from the quantum device
         job = service.job(job_id)
@@ -208,29 +211,24 @@ def retrieve_job_result(job_id, target_address, num_qubits):
         return None, None
 
     try:
-        # Access measurement results (binary strings like '010101')
-        result = job.result()
-        counts = result[0].data.c.get_counts()
+        # Access the measurement results (which are binary strings like '010101')
+        counts = job_result[0].data.c.get_counts()
         print("Counts retrieved from job:", counts)
 
-        print("Retrieving the most frequent results...")
-        private_key_candidates = get_top_10_frequent(counts)
-        print("Top 10 most frequent counts from The Quantum Circuit:", private_key_candidates)
-
-        # Verify each binary result for a valid private key
+        # Check each binary result for a valid private key
         for bin_key, count in counts.items():
             bin_key = bin_key.strip()
 
-            # Ensure the key is exactly 18 bits
-            if len(bin_key) < num_qubits:
-                bin_key = bin_key.ljust(num_qubits, '0')
-            elif len(bin_key) > num_qubits:
-                bin_key = bin_key[:num_qubits]
+            # Ensure the key is exactly 20 bits
+            if len(bin_key) < quantum_registers:
+                bin_key = bin_key.ljust(quantum_registers, '0')
+            elif len(bin_key) > quantum_registers:
+                bin_key = bin_key[:quantum_registers]
 
-            print(f"\nVerifying binary key (first 18 bits): {bin_key} with length {len(bin_key)}")
-            print(f"Key count: {count}")
+            print(f"\nChecking binary key (first 20 bits): {bin_key} with length {len(bin_key)}")
+            print(f"Key count: {count} times generated")
 
-            # Convert binary string to hexadecimal
+            # Convert binary string to hex
             private_key_hex = binary_to_hex(bin_key)
             if private_key_hex is None:
                 continue  # Skip if conversion failed
@@ -238,7 +236,7 @@ def retrieve_job_result(job_id, target_address, num_qubits):
             # Convert to compressed Bitcoin address
             compressed_address = private_key_to_compressed_address(private_key_hex)
 
-            # Verify if the private key produces the target Bitcoin address
+            # Check if the private key produces the target Bitcoin address
             if compressed_address == target_address:
                 print(f"Valid private key found: {private_key_hex}")
 
@@ -286,14 +284,16 @@ def plot_results_histogram(counts):
 def main():
     min_range = 0x10000
     max_range = 0x1FFFF
-    num_qubits = int(np.ceil(np.log2(max_range))) + 1  # +1 for ancilla qubit
+    num_qubits = 19
     target_address = "1HduPEXZRdG26SUT5Yk83mLkPyjnZuJ7Bm"
     public_key_hex = "033f688bae8321b8e02b7e6c0a55c2515fb25ab97d85fda842449f7bfa04e128c3"
     x_Q = int(public_key_hex[2:], 16)
     keyspace_size = max_range - min_range + 1
-    print(f"Taille de l'espace de clés calculée : {keyspace_size}")
+    print(f"Taille de l'espace de clés calculée : {keyspace_size}")  # for Shor
     print(f"Number of Qubits : {num_qubits}")
-
+    iterations = int(np.sqrt(float(max_range - min_range)))  # for Grover
+    print(f"Calculated iterations: {iterations}")
+    quantum_registers = 20  # Use 20 qubits for the search
     # Initialize Qiskit Runtime Service
     service = QiskitRuntimeService()
     available_backends = service.backends()
@@ -369,25 +369,27 @@ def main():
             except Exception as e:
                 print(f"Error processing candidate {candidate}: {str(e)}")
         else:
-            print("No valid key found in this batch. Resubmitting job...")
-            continue  # Restart the loop if no key is found
+            print("No valid key found in this batch.")
 
         # Retrieve and verify job results
-        found_key, compressed_address = retrieve_job_result(job_id, target_address, num_qubits)
+        found_key, compressed_address = retrieve_job_result(job_id, target_address, quantum_registers)
+
         if found_key:
             print("\nSUCCESS! Private key:")
             print(f"Found matching private key: {found_key}")
             print(f"HEX: {hex(found_key)}")
             print(f"DEC: {found_key}")
-        # Save the results to boom.txt
-        with open("boom.txt", "w") as file:
-            file.write("Measurement Results:\n")
-            for bitstring, count in counts.items():
-                file.write(f"{bitstring}: {count}\n")
-        print("Results saved to boom.txt")
-        break  # Exit the loop if a valid key is found
-    else:
-        print("\nFailed to find private key. Resubmitting job...")
+        
+            # Save the results to boom.txt
+            with open("boom.txt", "w") as file:
+                file.write("Measurement Results:\n")
+                for bitstring, count in counts.items():
+                    file.write(f"{bitstring}: {count}\n")
+            print("Results saved to boom.txt")
+            break  # Exit the loop if a valid key is found
+        else:
+            print("No valid key found. Resubmitting job...")
+            continue  # Restart the loop if no key is found
 
 if __name__ == "__main__":
     main()
