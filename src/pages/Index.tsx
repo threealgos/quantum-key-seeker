@@ -3,8 +3,9 @@ import React from 'react';
 import QuantumCircuit from '@/components/QuantumCircuit';
 import ResultsDisplay from '@/components/ResultsDisplay';
 import ControlPanel from '@/components/ControlPanel';
-import { Bitcoin } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import DonationCard from '@/components/DonationCard';
+import { AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Index = () => {
   return (
@@ -15,41 +16,33 @@ const Index = () => {
             Quantum Key Seeker
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto">
-            A quantum computing interface for ECDLP solving, powered by advanced quantum algorithms
-            and real quantum hardware.
+            Advanced quantum computing interface for ECDLP solving using IBM Quantum hardware
           </p>
         </header>
+
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Deprecation Notice</AlertTitle>
+          <AlertDescription>
+            The qiskit.compiler.assembler.assemble() function is deprecated as of Qiskit 1.2. 
+            We are working on updating to BackendV2 workflow.
+          </AlertDescription>
+        </Alert>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-2 space-y-8">
             <QuantumCircuit />
             <ResultsDisplay />
+            <DonationCard />
           </div>
-          <div>
+          <div className="space-y-8">
             <ControlPanel />
           </div>
         </div>
 
-        {/* Donation Section */}
-        <Card className="p-6 bg-white/80 backdrop-blur-lg border border-gray-200">
-          <div className="text-center space-y-4">
-            <div className="flex items-center justify-center gap-2">
-              <Bitcoin className="h-6 w-6 text-orange-500" />
-              <h3 className="text-lg font-semibold">Support Quantum Key Seeker</h3>
-            </div>
-            <p className="text-gray-600">
-              If you find this project useful, consider supporting its development:
-            </p>
-            <div className="bg-gray-50 p-4 rounded-lg inline-block">
-              <code className="font-mono text-sm">
-                1NEJcwfcEm7Aax8oJNjRUnY3hEavCjNrai
-              </code>
-            </div>
-          </div>
-        </Card>
-
         <footer className="text-center text-sm text-gray-400 pt-8">
-          <p>Running on IBM Quantum Hardware</p>
+          <p>Running on IBM Quantum Hardware - Using BackendV2 workflow</p>
+          <p className="mt-2">Current Backend: IBM Sherbrooke</p>
         </footer>
       </div>
     </div>
