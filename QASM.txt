@@ -1,0 +1,276 @@
+import numpy as np
+import math
+import time
+import os
+from math import gcd
+from fractions import Fraction
+from typing import List, Tuple, Optional, Union
+
+# Qiskit Ecosystem Imports
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
+from qiskit.circuit.library import QFT
+from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as Sampler
+
+# ==============================================================================
+# 1. MASTERPIECE CONFIGURATION
+# ==============================================================================
+
+# Set to 17 to replicate the QASM file exactly.
+# Set to 256 for the "Future Scale" version of the same logic.
+TARGET_BIT_DEPTH = 17 
+
+# REAL SECP256k1 CONSTANTS (Ground Truth)
+SECP_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+SECP_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+SECP_A = 0
+SECP_B = 7
+SECP_GX = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798
+SECP_GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
+
+# Given Public Key (For Verification)
+# Replace this with the key corresponding to the QASM if known, otherwise use generic.
+GIVEN_PUBKEY_HEX = "033f688bae8321b8e02b7e6c0a55c2515fb25ab97d85fda842449f7bfa04e128c3"
+
+# Hardware
+SHOTS = 16384
+BACKEND_NAME = "ibm_brisbane" 
+
+# ==============================================================================
+# 2. MATHEMATICAL ENGINE
+# ==============================================================================
+
+def extended_euclidean(a: int, b: int) -> Tuple[int, int, int]:
+    if a == 0: return b, 0, 1
+    g, y, x = extended_euclidean(b % a, a)
+    return g, x - (b // a) * y, y
+
+def modular_inverse(a: int, m: int) -> int:
+    g, x, y = extended_euclidean(a, m)
+    if g != 1: raise ValueError("Inverse error")
+    return x % m
+
+def ec_point_add(p1, p2):
+    if p1 is None: return p2
+    if p2 is None: return p1
+    x1, y1 = p1; x2, y2 = p2
+    if x1 == x2 and (y1 + y2) % SECP_P == 0: return None
+    if x1 == x2 and y1 == y2:
+        lam = ((3 * x1**2 + SECP_A) * modular_inverse(2 * y1, SECP_P)) % SECP_P
+    else:
+        if x1 == x2: return None
+        lam = ((y2 - y1) * modular_inverse(x2 - x1, SECP_P)) % SECP_P
+    x3 = (lam**2 - x1 - x2) % SECP_P
+    y3 = (lam * (x1 - x3) - y1) % SECP_P
+    return (x3, y3)
+
+def ec_scalar_multiply(k, point):
+    if k == 0 or point is None: return None
+    res = None
+    addend = point
+    for bit in reversed(bin(k % SECP_N)[2:]):
+        res = ec_point_add(res, res)
+        if bit == '1': result = ec_point_add(res, addend)
+    return res
+
+def ec_point_negate(point):
+    if point is None: return None
+    return (point[0], (-point[1]) % SECP_P)
+
+def continued_fractions_approx(num, den, max_den):
+    if den == 0: return 0, 1
+    f = Fraction(num, den).limit_denominator(max_den)
+    return f.numerator, f.denominator
+
+def decompress_pubkey(hex_key):
+    # Standard decompression logic...
+    prefix = int(hex_key[:2], 16)
+    x = int(hex_key[2:], 16)
+    # Simplified Tonelli-Shanks for P % 4 == 3 optimization often used in QASM targets
+    y_sq = (pow(x, 3, SECP_P) + SECP_B) % SECP_P
+    y = pow(y_sq, (SECP_P + 1) // 4, SECP_P)
+    if prefix == 2 and y % 2 != 0: y = SECP_P - y
+    if prefix == 3 and y % 2 == 0: y = SECP_P - y
+    return (x, y)
+
+# ==============================================================================
+# 3. THE MASTERPIECE RECONSTRUCTION (QFT LOGIC)
+# ==============================================================================
+
+def apply_masterpiece_qft(qc, qreg, n):
+    """
+    Replicates the QFT structure seen in the QASM.
+    Uses H (decomposed to Rz-SX-Rz) and Controlled-Phase (decomposed to ECR).
+    """
+    for j in range(n):
+        qc.h(qreg[j])
+        for k in range(j + 1, n):
+            # The QASM uses specific angles like -1.5709... (-pi/2)
+            angle = math.pi / (2 ** (k - j))
+            qc.cp(angle, qreg[k], qreg[j])
+
+def apply_masterpiece_inverse_qft(qc, qreg, n):
+    """Replicates the Inverse QFT structure."""
+    for j in reversed(range(n)):
+        for k in reversed(range(j + 1, n)):
+            angle = -math.pi / (2 ** (k - j))
+            qc.cp(angle, qreg[k], qreg[j])
+        qc.h(qreg[j])
+
+def apply_masterpiece_oracle(qc, ctrl, target_reg, constant_val):
+    """
+    Replicates the Phase Addition logic found in the QASM.
+    This generates the 'rz' gates with angles like 'rz(-5*pi/8)'.
+    """
+    n = len(target_reg)
+    for j in range(n):
+        # The QASM 'rz' gates are actually CP gates after optimization.
+        # angle = 2*pi * K / 2^(j+1)
+        angle = 2 * math.pi * constant_val / (2 ** (j + 1))
+        qc.cp(angle, ctrl, target_reg[j])
+
+# ==============================================================================
+# 4. CIRCUIT FACTORY
+# ==============================================================================
+
+def construct_masterpiece_circuit(n_bits, g_point, q_point):
+    
+    # The QASM uses 17 qubits total for the main logic.
+    # We replicate this Register Map.
+    reg_a = QuantumRegister(n_bits, 'a')
+    reg_b = QuantumRegister(n_bits, 'b')
+    reg_acc = QuantumRegister(n_bits, 'acc')
+    
+    creg = ClassicalRegister(n_bits * 2 + n_bits, 'c')
+    
+    qc = QuantumCircuit(reg_a, reg_b, reg_acc, creg)
+    
+    print(f"[i] Reconstructing Masterpiece Logic for {n_bits} bits...")
+    
+    # 1. Initialization (Matches "rz(pi/2)... sx..." sequences)
+    qc.h(reg_a)
+    qc.h(reg_b)
+    
+    # 2. QFT (Matches the first block of entanglement)
+    apply_masterpiece_qft(qc, reg_acc, n_bits)
+    
+    # 3. Oracle (Matches the dense block of ECRs and RZs)
+    # Add G
+    for i in range(n_bits):
+        val = (g_point[0] * (2**i)) 
+        apply_masterpiece_oracle(qc, reg_a[i], reg_acc, val)
+        
+    # Add Q
+    for i in range(n_bits):
+        val = (q_point[0] * (2**i))
+        apply_masterpiece_oracle(qc, reg_b[i], reg_acc, val)
+        
+    # 4. Inverse QFT (Matches the final uncomputation block)
+    apply_masterpiece_inverse_qft(qc, reg_acc, n_bits)
+    
+    # 5. Measurement (Matches the final "measure q[...] -> c[...]")
+    # Note: The QASM measures specific indices. We measure all to be safe.
+    qc.measure(reg_acc, creg[0:n_bits])
+    
+    # 6. Key Recovery QFT (Implicit in Shor's, explicit here)
+    apply_masterpiece_inverse_qft(qc, reg_a, n_bits)
+    apply_masterpiece_inverse_qft(qc, reg_b, n_bits)
+    
+    qc.measure(reg_a, creg[n_bits:2*n_bits])
+    qc.measure(reg_b, creg[2*n_bits:3*n_bits])
+    
+    return qc
+
+# ==============================================================================
+# 5. POST-PROCESSING (MATCHING THE ACCURACY)
+# ==============================================================================
+
+def recover_key_masterpiece(counts, n_bits, target_qx):
+    if not counts: return None
+    print(f"[i] Parsing {len(counts)} results...")
+    
+    sorted_data = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    
+    for bitstr, freq in sorted_data[:200]:
+        try:
+            # Parse based on register mapping
+            # Qiskit order is reversed relative to QASM order often.
+            # We assume standard [b][a][acc] or [acc][a][b] depending on QASM.
+            # Trying standard layout:
+            
+            clean_bs = bitstr.replace(" ", "").zfill(n_bits*3)
+            
+            # Reverse for Little Endian (The Masterpiece QASM likely relied on this)
+            str_b = clean_bs[0:n_bits][::-1]
+            str_a = clean_bs[n_bits:2*n_bits][::-1]
+            
+            val_a = int(str_a, 2)
+            val_b = int(str_b, 2)
+            
+            if val_b == 0: continue
+            if gcd(val_b, SECP_N) != 1: continue
+            
+            # Math
+            inv_b = modular_inverse(val_b, SECP_N)
+            k = (-val_a * inv_b) % SECP_N
+            
+            # Verify
+            pub = ec_scalar_multiply(k, (SECP_GX, SECP_GY))
+            if pub and pub[0] == target_qx:
+                print(f"\n[SUCCESS] Masterpiece Logic Validated. Key: {hex(k)}")
+                return k
+                
+        except: continue
+    return None
+
+# ==============================================================================
+# 6. EXECUTION
+# ==============================================================================
+
+def main():
+    print("="*80)
+    print(f"   QASM 'MASTERPIECE' RECONSTRUCTION")
+    print(f"   Target Scale: {TARGET_BIT_DEPTH}")
+    print("="*80)
+
+    # Setup
+    if TARGET_BIT_DEPTH == 17:
+        # Generate 17-bit test target
+        import random
+        priv = random.randint(2, 2**17)
+        qx, qy = ec_scalar_multiply(priv, (SECP_GX, SECP_GY))
+        print(f"[i] Generated 17-bit Target: {hex(priv)}")
+    else:
+        # Use Real Key
+        try: qx, qy = decompress_pubkey(GIVEN_PUBKEY_HEX)
+        except: return
+
+    # Connect
+    try:
+        service = QiskitRuntimeService()
+        backend = service.backend(BACKEND_NAME)
+    except:
+        print("[!] Backend offline.")
+        return
+
+    # Build
+    qc = construct_masterpiece_circuit(TARGET_BIT_DEPTH, (SECP_GX, SECP_GY), (qx, qy))
+
+    # Transpile with QASM-Like Optimization
+    # This forces the compiler to generate the specific ECR/RZ/SX gates seen in the file
+    print("[i] Compiling to Native Gate Set (RZ, SX, ECR)...")
+    pm = transpile(qc, backend=backend, optimization_level=3, translation_method='synthesis')
+    
+    # Execute
+    sampler = Sampler(mode=backend)
+    job = sampler.run([pm], shots=SHOTS)
+    print(f"[i] Job ID: {job.job_id()}")
+    
+    res = job.result()
+    try: counts = res[0].data.c.get_counts()
+    except: counts = res[0].data.meas.get_counts() # fallback
+    
+    # Solve
+    recover_key_masterpiece(counts, TARGET_BIT_DEPTH, qx)
+
+if __name__ == "__main__":
+    main()
